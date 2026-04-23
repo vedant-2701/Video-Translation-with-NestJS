@@ -1,0 +1,113 @@
+version: '3.9'
+
+services:
+  # ──────────────────────────────────────────────
+  # Infrastructure
+  # ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: vt_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vt_network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: vt_postgres
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vt_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vt_password}
+      POSTGRES_DB: ${POSTGRES_DB:-video_translation}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-vt_user} -d ${POSTGRES_DB:-video_translation}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vt_network
+
+  # ──────────────────────────────────────────────
+  # Application Services
+  # ──────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      target: development
+    container_name: vt_api
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vt_user}:${POSTGRES_PASSWORD:-vt_password}@postgres:5432/${POSTGRES_DB:-video_translation}
+      STORAGE_LOCAL_PATH: /app/storage
+      MAX_FILE_SIZE_MB: 500
+    volumes:
+      - ./apps/api/src:/app/src              # hot reload
+      - shared_storage:/app/storage          # shared with worker
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - vt_network
+
+  worker:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+      target: development
+    container_name: vt_worker
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      DATABASE_URL: postgresql://${POSTGRES_USER:-vt_user}:${POSTGRES_PASSWORD:-vt_password}@postgres:5432/${POSTGRES_DB:-video_translation}
+      STORAGE_LOCAL_PATH: /app/storage
+      PYTHONUNBUFFERED: 1
+      WHISPER_MODEL: base           # tiny | base | small | medium | large
+      TTS_MODEL: tts_models/multilingual/multi-dataset/xtts_v2
+    volumes:
+      - ./apps/worker:/app                   # hot reload
+      - shared_storage:/app/storage          # shared with api
+      - model_cache:/root/.cache     # persist downloaded AI models across restarts
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - vt_network
+
+# ──────────────────────────────────────────────
+# Volumes & Networks
+# ──────────────────────────────────────────────
+volumes:
+  redis_data:
+  postgres_data:
+  shared_storage:       # local shared filesystem (replaces MinIO for now)
+  model_cache:        # persists Whisper + XTTS model downloads across container restarts
+
+networks:
+  vt_network:
+    driver: bridge

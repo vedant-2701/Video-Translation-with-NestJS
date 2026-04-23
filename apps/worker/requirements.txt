@@ -1,0 +1,29 @@
+# ─── Queue ────────────────────────────────────────────────────
+bullmq==2.1.0                  # BullMQ Python client — reads same Redis queue as NestJS
+
+# ─── AI Pipeline ──────────────────────────────────────────────
+openai-whisper==20231117       # Whisper ASR — runs 100% locally, no API key
+argostranslate==1.9.6          # Offline translation — no API key, no cost
+TTS==0.22.0                    # Coqui TTS XTTS v2 — free multilingual local TTS
+
+# ─── Video Processing ─────────────────────────────────────────
+ffmpeg-python==0.2.0           # FFmpeg Python bindings (requires ffmpeg binary in PATH)
+
+# ─── Database ─────────────────────────────────────────────────
+psycopg2-binary==2.9.9         # PostgreSQL driver
+
+# ─── Config & Validation ──────────────────────────────────────
+pydantic==2.5.0
+pydantic-settings==2.1.0       # BaseSettings support for pydantic v2
+python-dotenv==1.0.0
+
+# ─── Logging ──────────────────────────────────────────────────
+structlog==24.1.0
+
+# ─── Redis ────────────────────────────────────────────────────
+redis==5.0.1
+
+# ─── Torch (required by Whisper and Coqui TTS) ────────────────
+# CPU-only build — remove +cpu suffix if you have a GPU
+torch==2.1.0
+torchaudio==2.1.0

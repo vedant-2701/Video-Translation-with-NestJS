@@ -1,0 +1,39 @@
+video-translation/
+│
+├── apps/
+│   ├── api/                        # NestJS API Gateway
+│   │   ├── src/
+│   │   │   ├── modules/
+│   │   │   │   ├── upload/         # Video upload handling
+│   │   │   │   ├── jobs/           # Job management & status
+│   │   │   │   └── download/       # Output retrieval
+│   │   │   ├── queues/             # BullMQ producers
+│   │   │   ├── storage/            # MinIO abstraction
+│   │   │   └── main.ts
+│   │   └── Dockerfile
+│   │
+│   └── worker/                     # Python Processing Worker
+│       ├── pipeline/
+│       │   ├── stages/
+│       │   │   ├── audio_extractor.py   # FFmpeg wrapper
+│       │   │   ├── transcriber.py       # Whisper ASR
+│       │   │   ├── translator.py        # LibreTranslate
+│       │   │   ├── synthesizer.py       # Coqui TTS
+│       │   │   └── video_merger.py      # FFmpeg merge
+│       │   ├── pipeline_builder.py      # Builder pattern
+│       │   └── pipeline_runner.py       # Orchestrator
+│       ├── queue/
+│       │   └── worker.py                # BullMQ consumer (via bullmq python)
+│       └── Dockerfile
+│
+├── shared/                         # Shared types/contracts
+│   └── job-schema.ts
+│
+├── infra/
+│   ├── docker-compose.yml
+│   ├── redis/
+│   ├── minio/
+│   └── postgres/
+│
+└── docs/
+    └── architecture.md
