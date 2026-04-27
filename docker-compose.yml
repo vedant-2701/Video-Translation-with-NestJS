@@ -1,15 +1,33 @@
 version: '3.9'
 
 services:
-  # ──────────────────────────────────────────────
-  # Infrastructure
-  # ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: vt_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: video_translation
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d video_translation']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
-    image: redis:7-alpine
-    container_name: redis
+    image: redis/redis-stack:latest
+    container_name: vt_redis
     restart: unless-stopped
     ports:
       - '6379:6379'
+    # Uncomment to add a password (also set REDIS_PASSWORD in .env):
+    # command: redis-server --requirepass yourpassword
     volumes:
       - redis_data:/data
     healthcheck:
@@ -17,103 +35,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - vt_network
 
-  postgres:
-    image: postgres:16-alpine
-    container_name: postgres
-    restart: unless-stopped
-    ports:
-      - '5432:5432'
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: video_translation
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U user -d video_translation']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - vt_network
-
-  # ──────────────────────────────────────────────
-  # Application Services
-  # ──────────────────────────────────────────────
-  api:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
-      target: development
-    container_name: vt_api
-    restart: unless-stopped
-    ports:
-      - '3000:3000'
-    environment:
-      NODE_ENV: development
-      PORT: 3000
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      DATABASE_URL: postgresql://user:password@postgres:5432/video_translation
-      STORAGE_LOCAL_PATH: /app/storage
-      MAX_FILE_SIZE_MB: 500
-    volumes:
-      - ./apps/api/src:/app/src              # hot reload
-      - shared_storage:/app/storage          # shared with worker
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    networks:
-      - vt_network
-
-  worker:
-    build:
-      context: ./apps/worker
-      dockerfile: Dockerfile
-      target: development
-    container_name: vt_worker
-    restart: unless-stopped
-    environment:
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      DATABASE_URL: postgresql://user:password@postgres:5432/video_translation
-      STORAGE_LOCAL_PATH: /app/storage
-      STORAGE_OUTPUT_PATH: /app/storage/outputs
-      SARVAM_API_KEY: ${SARVAM_API_KEY}
-      VOICEBOX_URL: ${VOICEBOX_URL:-}
-      VOICEBOX_ENGINE: chatterbox
-      VOICEBOX_FALLBACK_TO_BULBUL: "false"
-      TRANSLATION_MODE: modern-colloquial
-      TTS_SPEAKER: anushka
-      JOB_TIMEOUT_SECONDS: "1800"
-      PYTHONUNBUFFERED: "1"
-    volumes:
-      - ./apps/worker:/app                   # hot reload
-      - shared_storage:/app/storage          # shared with api
-      - model_cache:/root/.cache     # persist downloaded AI models across restarts
-    depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    networks:
-      - vt_network
-
-# ──────────────────────────────────────────────
-# Volumes & Networks
-# ──────────────────────────────────────────────
 volumes:
-  redis_data:
   postgres_data:
-  shared_storage:       # local shared filesystem (replaces MinIO for now)
-  model_cache:        # persists Whisper + XTTS model downloads across container restarts
-
-networks:
-  vt_network:
-    driver: bridge
+  redis_data:

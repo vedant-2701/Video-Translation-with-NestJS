@@ -26,11 +26,15 @@ import psycopg2.pool
 import redis as redis_sync
 import structlog
 from bullmq import Worker
+from dotenv import load_dotenv
 
 from pipeline.config import PipelineConfig
 from pipeline.pipeline import VideoTranslationPipeline
 from pipeline.utils.logging_config import configure_logging
 from worker_config import WorkerSettings
+
+# Load .env file to make all environment variables available
+load_dotenv()
 
 configure_logging()
 logger = structlog.get_logger()
