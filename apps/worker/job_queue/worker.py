@@ -29,7 +29,7 @@ from bullmq import Worker
 
 from pipeline.config import PipelineConfig
 from pipeline.pipeline import VideoTranslationPipeline
-from utils.logging_config import configure_logging
+from pipeline.utils.logging_config import configure_logging
 from worker_config import WorkerSettings
 
 configure_logging()

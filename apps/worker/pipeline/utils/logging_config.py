@@ -50,7 +50,7 @@ def configure_logging() -> None:
             logging.DEBUG if not is_prod else logging.INFO
         ),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 

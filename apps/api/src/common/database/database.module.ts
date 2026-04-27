@@ -13,9 +13,9 @@ export const DATABASE_CLIENT = 'DATABASE_CLIENT';
       useFactory: (config: ConfigService) => {
         const url = config.get<string>('app.database.url');
         return postgres(url!, {
-          max: 10,
-          idle_timeout: 30,
-          connect_timeout: 10,
+          max: 20,
+          idle_timeout: 60,
+          connect_timeout: 30,
         });
       },
     },

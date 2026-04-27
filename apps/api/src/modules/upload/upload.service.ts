@@ -72,8 +72,9 @@ export class UploadService {
         } catch (err) {
             this.logger.error(
                 `DB insert failed for job ${jobId} — rolling back file`,
-                (err as Error).message,
+                err instanceof Error ? err.message : JSON.stringify(err),
             );
+            console.error('Full DB error:', err);
             await this._safeDeleteFile(inputPath);
             throw new InternalServerErrorException(
                 "Failed to create translation job",

@@ -6,7 +6,7 @@ Run with: python worker.py
 """
 
 import asyncio
-from queue.worker import main
+from job_queue.worker import main
 
 if __name__ == "__main__":
     asyncio.run(main())
