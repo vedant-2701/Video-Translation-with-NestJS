@@ -17,7 +17,7 @@ import {
     TRANSLATION_QUEUE,
     JobStatus,
     TranslationJobPayload,
-} from "../../../../../shared/job-schema";
+} from "../../shared/job-schema";
 import * as path from "path";
 
 @Injectable()
@@ -92,9 +92,6 @@ export class UploadService {
         try {
             await this.translationQueue.add("translate", payload, {
                 jobId,
-                // Job-level timeout — BullMQ marks job as failed if worker takes > 35 min
-                // Slightly longer than worker-side timeout to avoid race conditions
-                timeout: 35 * 60 * 1000,
             });
         } catch (err) {
             this.logger.error(

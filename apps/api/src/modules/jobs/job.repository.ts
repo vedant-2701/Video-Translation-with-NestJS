@@ -1,6 +1,6 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { DATABASE_CLIENT } from '../../common/database/database.module';
-import { JobStatus, JobStatusType } from '../../../../../shared/job-schema';
+import { JobStatus, JobStatusType } from '../../shared/job-schema';
 import postgres from 'postgres';
 
 export interface TranslationJob {

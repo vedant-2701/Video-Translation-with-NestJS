@@ -13,6 +13,7 @@ import appConfig from "./common/config/app.config";
 import { EventsModule } from "./modules/events/events.module";
 import { AppLoggerModule } from "./common/logger/logger.module";
 import { JobCleanupModule } from "./common/jobs/job-cleanup.module";
+import { StreamModule } from "./modules/stream/stream.module";
 
 @Module({
     imports: [
@@ -55,6 +56,7 @@ import { JobCleanupModule } from "./common/jobs/job-cleanup.module";
         UploadModule,
         JobsModule,
         DownloadModule,
+        StreamModule,
     ],
     controllers: [AppController],
     providers: [AppService],

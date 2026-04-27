@@ -33,8 +33,14 @@ async function bootstrap() {
 
     // ── CORS ───────────────────────────────────────────────────
     app.enableCors({
-        origin: process.env.CORS_ORIGIN ?? "*",
+        origin: process.env.CORS_ORIGIN ?? "http://localhost:3001",
         methods: ["GET", "POST"],
+        exposedHeaders: [
+            "Content-Range",
+            "Accept-Ranges",
+            "Content-Length",
+            "Content-Disposition",
+        ],
     });
 
     // ── Graceful Shutdown ──────────────────────────────────────

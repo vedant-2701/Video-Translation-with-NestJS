@@ -1,7 +1,7 @@
 import { Injectable, Inject, BadRequestException } from '@nestjs/common';
 import { JobRepository } from '../jobs/job.repository';
 import { STORAGE_PROVIDER, type IStorageProvider } from '../../storage/storage.provider.interface';
-import { JobStatus } from '../../../../../shared/job-schema';
+import { JobStatus } from '../../shared/job-schema';
 import * as path from 'path';
 
 @Injectable()
