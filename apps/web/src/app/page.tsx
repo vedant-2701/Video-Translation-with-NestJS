@@ -277,13 +277,15 @@ export default function Home() {
                                     src={getStreamUrl("output", jobId)}
                                     label="Translated"
                                 />
-                                href=
-                                {`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"}/download/${jobId}`}
-                                download className="flex items-center
+                                <a
+                                    href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"}/download/${jobId}`}
+                                    className="flex items-center
                                 justify-center gap-2 rounded-xl bg-emerald-600
                                 py-2.5 text-sm font-semibold text-white
                                 transition hover:bg-emerald-500"
-                                <a>⬇️ Download Translated Video</a>
+                                >
+                                    ⬇️ Download Translated Video
+                                </a>
                             </div>
                         </div>
 

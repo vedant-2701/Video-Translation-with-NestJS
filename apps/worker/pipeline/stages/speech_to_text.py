@@ -101,16 +101,18 @@ class SmartSTTStage(Stage):
                 "ExtractAudioStage must run before SmartSTTStage."
             )
 
-        if self._config.use_batch_stt(ctx.video_duration):
-            print(f"\n[Stage 2/5] STT — batch job "
-                  f"(duration={ctx.video_duration:.1f}s "
-                  f">= {self._config.min_duration_for_batch}s)…")
-            self._batch.run(ctx)
-        else:
-            print(f"\n[Stage 2/5] STT — sync "
-                  f"(duration={ctx.video_duration:.1f}s "
-                  f"< {self._config.min_duration_for_batch}s)…")
-            self._sync.run(ctx)
+        # if self._config.use_batch_stt(ctx.video_duration):
+        #     print(f"\n[Stage 2/5] STT — batch job "
+        #           f"(duration={ctx.video_duration:.1f}s "
+        #           f">= {self._config.min_duration_for_batch}s)…")
+        #     self._batch.run(ctx)
+        # else:
+        #     print(f"\n[Stage 2/5] STT — sync "
+        #           f"(duration={ctx.video_duration:.1f}s "
+        #           f"< {self._config.min_duration_for_batch}s)…")
+        #     self._sync.run(ctx)
+
+        self._batch.run(ctx)  # for testing, run batch STT regardless of duration
 
         ctx.mark_done(self.name, chars=len(ctx.transcript or ""))
         preview = (ctx.transcript or "")[:200]
@@ -165,6 +167,7 @@ class _BatchSTT:
             language_code=self._config.source_language,
             mode="transcribe",
             with_diarization=False,   # DIARIZATION_HOOK: set True to enable
+            with_timestamps=True,
         )
         job.upload_files(file_paths=[ctx.audio_path])
         job.start()
@@ -177,6 +180,8 @@ class _BatchSTT:
         result_file = next(Path(out_dir).glob("*.json"))
         with open(result_file) as f:
             data = json.load(f)
+        
+        print(f"  [BatchSTT] Job completed. Result file: {data}")
 
         transcript = data.get("transcript", "").strip()
         if not transcript:
