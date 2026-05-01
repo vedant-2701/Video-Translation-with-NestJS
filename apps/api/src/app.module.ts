@@ -1,6 +1,5 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { BullModule } from "@nestjs/bullmq";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { UploadModule } from "./modules/upload/upload.module";
@@ -14,49 +13,32 @@ import { EventsModule } from "./modules/events/events.module";
 import { AppLoggerModule } from "./common/logger/logger.module";
 import { JobCleanupModule } from "./common/jobs/job-cleanup.module";
 import { StreamModule } from "./modules/stream/stream.module";
+import { WorkerModule } from "./modules/worker/worker.module";
+
+// BullMQ removed from root — no longer used for job queuing.
+// Colab polls NestJS directly via HTTP (/api/worker/next-queued).
+// JobCleanupModule: if it used BullMQ internally, check and update it separately.
 
 @Module({
     imports: [
-        // ── Config ─────────────────────────────────────────────
         ConfigModule.forRoot({
             isGlobal: true,
             load: [appConfig],
             envFilePath: ".env",
         }),
 
-        // ── Structured Logging (Pino) ──────────────────────────
         AppLoggerModule,
-
-        // ── Queue (BullMQ + Redis) ─────────────────────────────
-        BullModule.forRootAsync({
-            useFactory: () => ({
-                connection: {
-                    host: process.env.REDIS_HOST ?? "localhost",
-                    port: parseInt(process.env.REDIS_PORT ?? "6379", 10),
-                },
-                defaultJobOptions: {
-                    attempts: 3,
-                    backoff: { type: "exponential", delay: 5000 },
-                    removeOnComplete: { count: 100 },
-                    removeOnFail: { count: 50 },
-                },
-            }),
-        }),
-
-        // ── Infrastructure ─────────────────────────────────────
         DatabaseModule,
         StorageModule,
+        // JobCleanupModule,
 
-        // ── Scheduled Tasks ────────────────────────────────────
-        JobCleanupModule,
-
-        // ── Feature Modules ────────────────────────────────────
         HealthModule,
         EventsModule,
         UploadModule,
         JobsModule,
         DownloadModule,
         StreamModule,
+        WorkerModule,
     ],
     controllers: [AppController],
     providers: [AppService],

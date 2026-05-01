@@ -8,13 +8,17 @@ import { JobRepository } from "../jobs/job.repository";
 import {
     STORAGE_PROVIDER,
     type IStorageProvider,
+    isPresignedProvider,
 } from "../../storage/storage.provider.interface";
 import * as fs from "fs";
 import * as path from "path";
 
 export interface StreamTarget {
-    filePath: string;
-    fileSize: number;
+    // Local driver: filePath + fileSize set, presignedUrl null
+    filePath?: string;
+    fileSize?: number;
+    // MinIO driver: presignedUrl set, filePath + fileSize null
+    presignedUrl?: string;
     mimeType: string;
     filename: string;
 }
@@ -22,7 +26,7 @@ export interface StreamTarget {
 const MIME_MAP: Record<string, string> = {
     ".mp4": "video/mp4",
     ".webm": "video/webm",
-    ".mov": "video/mp4", // serve as mp4 container
+    ".mov": "video/mp4",
     ".avi": "video/x-msvideo",
     ".mkv": "video/x-matroska",
 };
@@ -36,7 +40,18 @@ export class StreamService {
 
     async resolveInput(jobId: string): Promise<StreamTarget> {
         const job = await this.jobRepository.findById(jobId);
-        return this.buildTarget(job.inputPath, job.inputFilename);
+
+        if (isPresignedProvider(this.storage) && job.s3InputKey) {
+            const url = await this.storage.presignedGetUrl(job.s3InputKey);
+            return {
+                presignedUrl: url,
+                mimeType: this._mime(job.inputFilename),
+                filename: job.inputFilename,
+            };
+        }
+
+        // Local driver fallback
+        return this._localTarget(job.inputPath!, job.inputFilename);
     }
 
     async resolveOutput(jobId: string): Promise<StreamTarget> {
@@ -48,27 +63,39 @@ export class StreamService {
             );
         }
 
-        if (!job.outputPath) {
-            throw new NotFoundException(
-                "Output file path not recorded for this job",
-            );
+        if (isPresignedProvider(this.storage) && job.s3OutputKey) {
+            const url = await this.storage.presignedGetUrl(job.s3OutputKey);
+            const filename = `translated-${job.inputFilename}`;
+            return {
+                presignedUrl: url,
+                mimeType: this._mime(filename),
+                filename,
+            };
         }
 
+        // Local driver fallback
+        if (!job.outputPath) {
+            throw new NotFoundException("Output file path not recorded");
+        }
         const filename = `translated-${job.inputFilename}`;
-        return this.buildTarget(job.outputPath, filename);
+        return this._localTarget(job.outputPath, filename);
     }
 
-    private buildTarget(storedPath: string, filename: string): StreamTarget {
+    private _localTarget(storedPath: string, filename: string): StreamTarget {
         const filePath = this.storage.resolve(storedPath);
-
         if (!fs.existsSync(filePath)) {
-            throw new NotFoundException(`File not found on disk: ${filename}`);
+            throw new NotFoundException(`File not found: ${filename}`);
         }
+        return {
+            filePath,
+            fileSize: fs.statSync(filePath).size,
+            mimeType: this._mime(filename),
+            filename,
+        };
+    }
 
-        const fileSize = fs.statSync(filePath).size;
+    private _mime(filename: string): string {
         const ext = path.extname(filename).toLowerCase();
-        const mimeType = MIME_MAP[ext] ?? "video/mp4";
-
-        return { filePath, fileSize, mimeType, filename };
+        return MIME_MAP[ext] ?? "video/mp4";
     }
 }

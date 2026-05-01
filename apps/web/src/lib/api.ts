@@ -13,10 +13,9 @@ export interface UploadResponse {
     targetLanguage: string;
     message: string;
 }
-
 export interface JobStatus {
     jobId: string;
-    status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
+    status: "PENDING" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
     progress: number;
     sourceLanguage: string;
     targetLanguage: string;
@@ -32,7 +31,57 @@ export interface ProgressEvent {
     progress: number;
     stage: string;
     message: string;
+    isReplay?: boolean;
 }
+
+export interface UploadInitResponse {
+    jobId: string;
+    presignedUrl: string;
+    s3Key: string;
+}
+
+export const uploadVideoInit = async (
+    file: File,
+    sourceLanguage: string,
+    targetLanguage: string,
+): Promise<UploadInitResponse> => {
+    const { data } = await api.post<UploadInitResponse>("/upload/init", {
+        filename: file.name,
+        fileSizeMb: parseFloat((file.size / 1024 / 1024).toFixed(3)),
+        sourceLanguage,
+        targetLanguage,
+    });
+
+    return data;
+};
+
+export const uploadVideoPutPresigned = async (
+    presignedUrl: string,
+    file: File,
+    onUploadProgress?: (pct: number) => void,
+): Promise<void> => {
+    await axios.put(presignedUrl, file, {
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        onUploadProgress: (e) => {
+            if (e.total)
+                onUploadProgress?.(Math.round((e.loaded / e.total) * 100));
+        },
+    });
+};
+
+export const uploadVideoConfirm = async (
+    jobId: string,
+    s3Key: string,
+): Promise<UploadResponse> => {
+    const { data } = await api.post<UploadResponse>(
+        `/upload/${jobId}/confirm`,
+        {
+            s3Key,
+        },
+    );
+
+    return data;
+};
 
 export const uploadVideo = async (
     file: File,
@@ -40,20 +89,36 @@ export const uploadVideo = async (
     targetLanguage: string,
     onUploadProgress?: (pct: number) => void,
 ): Promise<UploadResponse> => {
-    const form = new FormData();
-    form.append("video", file);
-    form.append("sourceLanguage", sourceLanguage);
-    form.append("targetLanguage", targetLanguage);
+    // Step 1: Initialize upload
+    const initRes = await uploadVideoInit(file, sourceLanguage, targetLanguage);
 
-    const { data } = await api.post<UploadResponse>("/upload", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (e) => {
-            if (e.total)
-                onUploadProgress?.(Math.round((e.loaded / e.total) * 100));
-        },
-    });
+    // Step 2: Upload file to presigned URL
+    await uploadVideoPutPresigned(initRes.presignedUrl, file, onUploadProgress);
 
-    return data;
+    // Step 3: Confirm upload
+    const confirmRes = await uploadVideoConfirm(initRes.jobId, initRes.s3Key);
+
+    console.log('[uploadVideo] confirmRes:', confirmRes);
+    return confirmRes;
+};
+
+export const downloadVideo = async (jobId: string): Promise<void> => {
+    const { data } = await api.get<{ url: string; filename: string }>(
+        `/download/${jobId}`,
+    );
+
+    // Fetch the actual video bytes then trigger download
+    const response = await fetch(data.url);
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = data.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
 };
 
 export const getJobStatus = async (jobId: string): Promise<JobStatus> => {

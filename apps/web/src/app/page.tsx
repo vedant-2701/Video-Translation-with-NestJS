@@ -11,6 +11,7 @@ import {
     getStreamUrl,
     type ProgressEvent,
     type JobStatus,
+    downloadVideo,
 } from "@/lib/api";
 
 type AppStatus = "idle" | "uploading" | "processing" | "completed" | "failed";
@@ -43,6 +44,7 @@ export default function Home() {
     }, []);
 
     useJobProgress({ jobId, onProgress, onComplete, onError });
+    
 
     const handleFileSelected = useCallback((f: File) => {
         setFile(f);
@@ -277,7 +279,7 @@ export default function Home() {
                                     src={getStreamUrl("output", jobId)}
                                     label="Translated"
                                 />
-                                <a
+                                {/* <a
                                     href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"}/download/${jobId}`}
                                     className="flex items-center
                                 justify-center gap-2 rounded-xl bg-emerald-600
@@ -285,7 +287,13 @@ export default function Home() {
                                 transition hover:bg-emerald-500"
                                 >
                                     ⬇️ Download Translated Video
-                                </a>
+                                </a> */}
+                                <button 
+                                    onClick={() => downloadVideo(jobId)}
+                                    className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500"
+                                >
+                                    Download Translated Video
+                                </button>
                             </div>
                         </div>
 

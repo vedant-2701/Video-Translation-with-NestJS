@@ -105,8 +105,10 @@ export function useJobProgress({
                 attemptsRef.current += 1;
 
                 if (attemptsRef.current <= RECONNECT_DELAYS.length) {
-                    // Try to reconnect
-                    connect();
+                    // Reconnect with delay — only on subsequent attempts
+                    const jitter = Math.random() * 500;
+                    const delay  = RECONNECT_DELAYS[attemptsRef.current - 1] + jitter;
+                    setTimeout(doConnect, delay);
                 } else {
                     // All SSE attempts exhausted — fall back to polling
                     startPolling();

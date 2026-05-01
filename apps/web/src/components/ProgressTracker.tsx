@@ -24,6 +24,16 @@ const STAGE_LABELS: Record<string, string> = {
     QUEUED: "Queued",
 };
 
+const STAGE_DONE_AT: Record<string, number> = {
+    stage_1_extract_audio: 10,
+    stage_2_transcribe: 28,
+    stage_3_translate: 45,
+    stage_4_tts: 72,
+    stage_5_assemble: 83,
+    stage_6_subtitles: 88,
+    stage_7_merge: 95,
+};
+
 interface ProgressTrackerProps {
     events: ProgressEvent[];
     currentProgress: number;
@@ -86,9 +96,12 @@ export function ProgressTracker({
                         const stageEvents = events.filter(
                             (e) => e.stage === stage,
                         );
-                        const isDone = stageEvents.some((e) =>
-                            e.message?.includes("Completed"),
-                        );
+                        const isDone =
+                            stageEvents.some((e) =>
+                                e.message?.includes("Completed"),
+                            ) ||
+                            currentProgress >= (STAGE_DONE_AT[stage] ?? 100) ||
+                            status === "completed";
                         const isActive = currentStage === stage && !isDone;
                         const hasStarted = stageEvents.length > 0;
 

@@ -2,128 +2,120 @@ import {
     Injectable,
     Inject,
     Logger,
+    BadRequestException,
     InternalServerErrorException,
+    NotFoundException,
 } from "@nestjs/common";
-import { InjectQueue } from "@nestjs/bullmq";
-import { Queue } from "bullmq";
+import { ConfigService } from "@nestjs/config";
 import { v4 as uuidv4 } from "uuid";
-import { UploadVideoDto } from "./dto/upload-video.dto";
+import * as path from "path";
+import { InitUploadDto } from "./dto/init-upload.dto";
+import { ConfirmUploadDto } from "./dto/confirm-upload.dto";
 import { JobRepository } from "../jobs/job.repository";
 import {
     STORAGE_PROVIDER,
     type IStorageProvider,
+    isPresignedProvider,
 } from "../../storage/storage.provider.interface";
-import {
-    TRANSLATION_QUEUE,
-    JobStatus,
-    TranslationJobPayload,
-} from "../../shared/job-schema";
-import * as path from "path";
+import { JobStatus } from "../../shared/job-schema";
 
 @Injectable()
 export class UploadService {
     private readonly logger = new Logger(UploadService.name);
 
     constructor(
-        @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
-        @InjectQueue(TRANSLATION_QUEUE)
-        private readonly translationQueue: Queue,
+        private readonly config: ConfigService,
         private readonly jobRepository: JobRepository,
+        @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
     ) {}
 
-    async handleUpload(file: Express.Multer.File, dto: UploadVideoDto) {
+    /**
+     * Step 1: Create a PENDING job and return a presigned PUT URL.
+     * Browser uses the URL to upload directly to MinIO.
+     */
+    async initUpload(dto: InitUploadDto) {
+        const maxMb = this.config.get<number>("app.maxFileSizeMb", 500);
+        if (dto.fileSizeMb > maxMb) {
+            throw new BadRequestException(
+                `File size ${dto.fileSizeMb}MB exceeds limit of ${maxMb}MB`,
+            );
+        }
+
+        if (!isPresignedProvider(this.storage)) {
+            throw new InternalServerErrorException(
+                "Storage driver does not support presigned uploads. Set STORAGE_DRIVER=s3.",
+            );
+        }
+
         const jobId = uuidv4();
-        const ext = path.extname(file.originalname).toLowerCase();
-        const inputFilename = `${jobId}-input${ext}`;
-        const outputFilename = `${jobId}-output${ext}`;
+        const ext = path.extname(dto.filename).toLowerCase();
+        const s3Key = `uploads/${jobId}-input${ext}`;
 
-        // Step 1 — Save file to storage
-        let inputPath: string;
-        try {
-            inputPath = await this.storage.save(
-                inputFilename,
-                file.buffer,
-                "uploads",
-            );
-        } catch (err) {
-            this.logger.error(
-                `Storage write failed for job ${jobId}`,
-                (err as Error).message,
-            );
-            throw new InternalServerErrorException(
-                "Failed to store uploaded file",
-            );
-        }
-
-        const outputPath = path.join("outputs", outputFilename);
-
-        // Step 2 — Create DB record (rollback file on failure)
-        let job: Awaited<ReturnType<JobRepository["create"]>>;
-        try {
-            job = await this.jobRepository.create({
-                id: jobId,
-                status: JobStatus.QUEUED,
-                sourceLanguage: dto.sourceLanguage,
-                targetLanguage: dto.targetLanguage,
-                inputFilename: file.originalname,
-                inputPath,
-                outputPath,
-            });
-        } catch (err) {
-            this.logger.error(
-                `DB insert failed for job ${jobId} — rolling back file`,
-                err instanceof Error ? err.message : JSON.stringify(err),
-            );
-            console.error('Full DB error:', err);
-            await this._safeDeleteFile(inputPath);
-            throw new InternalServerErrorException(
-                "Failed to create translation job",
-            );
-        }
-
-        // Step 3 — Enqueue job (rollback file + DB record on failure)
-        const payload: TranslationJobPayload = {
-            jobId,
-            inputPath,
-            outputPath,
+        // Create PENDING job row
+        await this.jobRepository.create({
+            id: jobId,
+            status: JobStatus.PENDING,
             sourceLanguage: dto.sourceLanguage,
             targetLanguage: dto.targetLanguage,
-        };
+            inputFilename: dto.filename,
+            s3InputKey: s3Key,
+        });
 
-        try {
-            await this.translationQueue.add("translate", payload, {
-                jobId,
-            });
-        } catch (err) {
-            this.logger.error(
-                `Queue enqueue failed for job ${jobId} — rolling back`,
-                (err as Error).message,
+        // Generate presigned PUT URL — browser uploads directly here
+        const bucket = this.config.get<string>("app.storage.s3.bucket");
+        let presignedUrl: string;
+        
+        // Check if storage provider has generatePresignedPutUrl method
+        if (typeof (this.storage as any).generatePresignedPutUrl === "function") {
+            const result = await (this.storage as any).generatePresignedPutUrl(
+                { key: s3Key },
+                bucket,
             );
-            await this._safeDeleteFile(inputPath);
-            // DB record stays (for audit) but with FAILED status
-            await this.jobRepository.updateStatus(jobId, JobStatus.FAILED, {
-                errorMessage: "Failed to enqueue translation job",
-            });
-            throw new InternalServerErrorException(
-                "Failed to queue translation job",
-            );
+            presignedUrl = result.upload_url;
+        } else {
+            presignedUrl = await this.storage.presignedPutUrl(s3Key);
         }
 
-        this.logger.log(
-            `Job ${jobId} created | ${dto.sourceLanguage} → ${dto.targetLanguage} | ${(file.size / 1024 / 1024).toFixed(2)} MB`,
-        );
+        this.logger.log(`Upload initiated: job=${jobId} key=${s3Key} bucket=${bucket}`);
 
-        return job;
+        return {
+            jobId,
+            presignedUrl,
+            s3Key,
+        };
     }
 
-    private async _safeDeleteFile(filePath: string): Promise<void> {
-        try {
-            await this.storage.delete(filePath);
-        } catch (cleanupErr) {
-            // Log but don't throw — rollback best-effort
-            this.logger.warn(
-                `Rollback file delete failed for ${filePath}: ${(cleanupErr as Error).message}`,
+    /**
+     * Step 2: Browser confirms upload completed.
+     * Verify file exists in MinIO, then transition job PENDING → QUEUED.
+     * Colab picks up QUEUED jobs on its next poll.
+     */
+    async confirmUpload(jobId: string, dto: ConfirmUploadDto) {
+        const job = await this.jobRepository.findById(jobId);
+
+        if (job.status !== JobStatus.PENDING) {
+            throw new BadRequestException(
+                `Job ${jobId} is not in PENDING state (current: ${job.status})`,
             );
         }
+
+        // Verify file actually landed in MinIO before queuing
+        const exists = await this.storage.exists(dto.s3Key);
+        if (!exists) {
+            throw new NotFoundException(
+                `File not found in storage at key: ${dto.s3Key}. ` +
+                    `Upload may have failed — try again.`,
+            );
+        }
+
+        await this.jobRepository.updateStatus(jobId, JobStatus.QUEUED);
+
+        this.logger.log(`Job ${jobId} confirmed and queued`);
+
+        return {
+            jobId,
+            status: JobStatus.QUEUED,
+            message: "Upload confirmed. Job queued for translation.",
+        };
     }
 }

@@ -6,6 +6,7 @@
 export const TRANSLATION_QUEUE = "translation";
 
 export const JobStatus = {
+    PENDING: "PENDING",
     QUEUED: "QUEUED",
     PROCESSING: "PROCESSING",
     COMPLETED: "COMPLETED",
@@ -26,16 +27,19 @@ export interface TranslationJobPayload {
 // Progress event emitted by worker back via Redis pub/sub
 export interface JobProgressEvent {
     jobId: string;
-    progress: number; // 0-100
-    stage: PipelineStage;
+    progress: number; // 0–100
+    stage: string; // PipelineStage value
     message?: string;
+    isReplay?: boolean; // true when emitted on SSE connect from DB state
 }
 
 export enum PipelineStage {
-    AUDIO_EXTRACTION = "AUDIO_EXTRACTION",
-    TRANSCRIPTION = "TRANSCRIPTION",
-    TRANSLATION = "TRANSLATION",
-    SYNTHESIS = "SYNTHESIS",
-    VIDEO_MERGE = "VIDEO_MERGE",
+    EXTRACT_AUDIO = "stage_1_extract_audio",
+    TRANSCRIBE = "stage_2_transcribe",
+    TRANSLATE = "stage_3_translate",
+    TTS = "stage_4_tts",
+    ASSEMBLE = "stage_5_assemble",
+    MERGE = "stage_6_merge",
     DONE = "DONE",
+    FAILED = "FAILED",
 }
