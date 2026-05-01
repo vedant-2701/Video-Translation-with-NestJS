@@ -22,6 +22,9 @@ export interface JobStatus {
     inputFilename: string;
     errorMessage: string | null;
     downloadReady: boolean;
+    s3SubtitleEnKey: string | null;
+    s3SubtitleHiKey: string | null;
+    subtitlesReady: boolean;
     createdAt: string;
     updatedAt: string;
 }
@@ -128,3 +131,18 @@ export const getJobStatus = async (jobId: string): Promise<JobStatus> => {
 
 export const getStreamUrl = (type: "input" | "output", jobId: string) =>
     `${API_BASE}/stream/${type}/${jobId}`;
+
+export interface SubtitleResponse {
+    url?: string;  // presigned URL for S3/MinIO
+    text?: string; // VTT file content for local storage
+}
+
+export const getSubtitleUrl = async (
+    jobId: string,
+    lang: 'en' | 'hi',
+): Promise<SubtitleResponse> => {
+    const { data } = await api.get<SubtitleResponse>(
+        `/jobs/${jobId}/subtitle-url/${lang}`,
+    );
+    return data;
+};

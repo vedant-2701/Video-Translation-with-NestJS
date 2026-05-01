@@ -6,9 +6,17 @@ interface VideoPlayerProps {
     src: string;
     label: string;
     className?: string;
+    subtitleEnUrl?: string;
+    subtitleHiUrl?: string;
 }
 
-export function VideoPlayer({ src, label, className = "" }: VideoPlayerProps) {
+export function VideoPlayer({
+    src,
+    label,
+    className = "",
+    subtitleEnUrl,
+    subtitleHiUrl,
+}: VideoPlayerProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
 
     useEffect(() => {
@@ -31,6 +39,23 @@ export function VideoPlayer({ src, label, className = "" }: VideoPlayerProps) {
                     className="aspect-video w-full object-contain"
                 >
                     <source src={src} />
+                    {subtitleEnUrl && (
+                        <track
+                            kind="subtitles"
+                            label="English"
+                            srcLang="en"
+                            src={subtitleEnUrl}
+                            default
+                        />
+                    )}
+                    {subtitleHiUrl && (
+                        <track
+                            kind="subtitles"
+                            label="Hindi"
+                            srcLang="hi"
+                            src={subtitleHiUrl}
+                        />
+                    )}
                     Your browser does not support the video tag.
                 </video>
             </div>

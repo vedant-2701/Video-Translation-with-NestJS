@@ -12,6 +12,7 @@ import {
     type ProgressEvent,
     type JobStatus,
     downloadVideo,
+    getSubtitleUrl,
 } from "@/lib/api";
 
 type AppStatus = "idle" | "uploading" | "processing" | "completed" | "failed";
@@ -27,15 +28,57 @@ export default function Home() {
     const [currentProgress, setCurrentProgress] = useState(0);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [localVideoUrl, setLocalVideoUrl] = useState<string | null>(null);
+    const [subtitleUrls, setSubtitleUrls] = useState<{
+        en?: string;
+        hi?: string;
+    }>({});
 
     const onProgress = useCallback((event: ProgressEvent) => {
         setProgressEvents((prev) => [...prev, event]);
         setCurrentProgress(event.progress);
     }, []);
 
-    const onComplete = useCallback((_job: JobStatus) => {
+    const onComplete = useCallback(async (job: JobStatus) => {
         setStatus("completed");
         setCurrentProgress(100);
+
+        // Fetch subtitle URLs if available
+        if (job.subtitlesReady) {
+            try {
+                const [enRes, hiRes] = await Promise.all([
+                    getSubtitleUrl(job.jobId, "en"),
+                    getSubtitleUrl(job.jobId, "hi"),
+                ]);
+
+                // Create blob URLs from VTT text (avoids CORS issues with <track>)
+                // For presigned URLs, we still create blob URLs for consistency
+                const getVttText = async (
+                    res: Awaited<ReturnType<typeof getSubtitleUrl>>,
+                ) => {
+                    if (res.text) {
+                        return res.text;
+                    } else if (res.url) {
+                        const response = await fetch(res.url);
+                        return await response.text();
+                    }
+                    return "";
+                };
+
+                const enText = await getVttText(enRes);
+                const hiText = await getVttText(hiRes);
+
+                const enBlob = new Blob([enText], { type: "text/vtt" });
+                const hiBlob = new Blob([hiText], { type: "text/vtt" });
+
+                setSubtitleUrls({
+                    en: URL.createObjectURL(enBlob),
+                    hi: URL.createObjectURL(hiBlob),
+                });
+            } catch (err) {
+                console.error("Failed to fetch subtitle URLs:", err);
+                // Continue without subtitles rather than failing
+            }
+        }
     }, []);
 
     const onError = useCallback((message: string) => {
@@ -89,6 +132,8 @@ export default function Home() {
 
     const handleReset = () => {
         if (localVideoUrl) URL.revokeObjectURL(localVideoUrl);
+        if (subtitleUrls.en) URL.revokeObjectURL(subtitleUrls.en);
+        if (subtitleUrls.hi) URL.revokeObjectURL(subtitleUrls.hi);
         setFile(null);
         setLocalVideoUrl(null);
         setJobId(null);
@@ -97,6 +142,7 @@ export default function Home() {
         setCurrentProgress(0);
         setProgressEvents([]);
         setErrorMessage(null);
+        setSubtitleUrls({});
     };
 
     const isBusy = status === "uploading" || status === "processing";
@@ -278,6 +324,8 @@ export default function Home() {
                                 <VideoPlayer
                                     src={getStreamUrl("output", jobId)}
                                     label="Translated"
+                                    subtitleEnUrl={subtitleUrls.en}
+                                    subtitleHiUrl={subtitleUrls.hi}
                                 />
                                 {/* <a
                                     href={`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000/api"}/download/${jobId}`}
